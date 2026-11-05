@@ -3,6 +3,8 @@ import {
   RECOMMENDED_STATION_MIN, RECOMMENDED_STATION_MAX,
 } from '../engine/board.js';
 import { loadSets, upsertSet, deleteSet } from './storage.js';
+import { renderPiece, pieceForIndex, assignPieces } from './pieces.js';
+import { renderAudioControls, installAudioUnlock } from './audio.js';
 
 const PLAYER_COLORS = ['#c75b39', '#3d7a6a', '#4a90a4', '#c4a35a'];
 const DEFAULT_NAMES = ['紅隊', '青隊', '藍隊', '金隊'];
@@ -22,6 +24,7 @@ function lineOrderList(stations) {
 }
 
 export function renderSetup(root, { stations, onStart }) {
+  installAudioUnlock();
   const state = {
     selected: new Set(),
     playerCount: 4,
@@ -82,14 +85,16 @@ export function renderSetup(root, { stations, onStart }) {
     for (let i = 0; i < state.playerCount; i++) {
       const row = document.createElement('div');
       row.className = 'player-row';
-      const sw = document.createElement('span');
-      sw.className = 'swatch';
-      sw.style.background = state.players[i].color;
+      const piece = pieceForIndex(i);
+      const token = renderPiece({ color: state.players[i].color, piece: piece.id, name: state.players[i].name }, { size: 36 });
       const input = document.createElement('input');
       input.value = state.players[i].name;
       input.placeholder = `玩家 ${i + 1}`;
       input.oninput = () => { state.players[i].name = input.value; };
-      row.append(sw, input);
+      const hint = document.createElement('span');
+      hint.className = 'hint piece-label';
+      hint.textContent = piece.label;
+      row.append(token, input, hint);
       playersCard.appendChild(row);
     }
 
@@ -116,6 +121,12 @@ export function renderSetup(root, { stations, onStart }) {
     readLabel.append(readCb, document.createTextNode('開啟「大家一起唸」'));
     playersCard.appendChild(readLabel);
 
+    const audioCard = document.createElement('div');
+    audioCard.className = 'field';
+    audioCard.innerHTML = '<label>音效（課堂友善・瀏覽器合成）</label>';
+    audioCard.appendChild(renderAudioControls());
+    playersCard.appendChild(audioCard);
+
     const startBtn = document.createElement('button');
     startBtn.textContent = '開始環島';
     const preview = previewBoard(stations, [...state.selected]);
@@ -130,11 +141,12 @@ export function renderSetup(root, { stations, onStart }) {
         alert(`棋盤會超過 ${MAX_BOARD_SQUARES} 格（目前預估 ${prev.squareCount} 格）。請減少車站，或按「縮減到上限」。`);
         return;
       }
-      const players = state.players.slice(0, state.playerCount).map((p, i) => ({
+      const players = assignPieces(state.players.slice(0, state.playerCount).map((p, i) => ({
         id: `p${i + 1}`,
         name: (p.name || DEFAULT_NAMES[i]).trim(),
         color: p.color,
-      }));
+        piece: pieceForIndex(i).id,
+      })));
       onStart({
         selectedIds: [...state.selected],
         players,

@@ -3,6 +3,7 @@ import { createGame } from './engine/game.js';
 import { renderSetup } from './ui/setup.js';
 import { renderPlay } from './ui/play.js';
 import { renderEnd } from './ui/end.js';
+import { installAudioUnlock } from './ui/audio.js';
 
 const app = document.getElementById('app');
 let stations = [];
@@ -10,6 +11,7 @@ let lastConfig = null;
 let stopPlay = null;
 
 async function boot() {
+  installAudioUnlock();
   const url = `${import.meta.env.BASE_URL}stations.json`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`無法載入車站資料（${res.status}）`);

@@ -17,8 +17,10 @@ export function createGame({ stations, selectedIds, players, timeLimitMin = 25,
   if (!Number.isFinite(timeLimitMin) || timeLimitMin < 0) throw new Error('時間限制必須為非負數');
   return {
     board: buildBoard(stations, selectedIds),
-    players: players.map(({ id, name, color }) => ({ id, name, color, cash: START_CASH,
-      position: 0, properties: [], skipped: false, correct: 0, wrong: [], bankrupt: false })),
+    players: players.map(({ id, name, color, piece }, i) => ({
+      id, name, color, piece: piece || ['king', 'knight', 'rook', 'queen'][i] || 'king',
+      cash: START_CASH, position: 0, properties: [], skipped: false, correct: 0, wrong: [], bankrupt: false,
+    })),
     currentPlayerIndex: 0, phase: 'await_roll', pending: null, turnNumber: 1,
     startedAt: now(), timeLimitMin, readAloud, rng, now,
     loreDeck: buildLoreDeck(stations, selectedIds, rng), loreIndex: 0,
@@ -34,7 +36,7 @@ function copy(state) {
 function end(state) {
   state.phase = 'ended';
   state.pending = null;
-  state.winnerRanking = state.players.map(p => ({ id: p.id, name: p.name, color: p.color,
+  state.winnerRanking = state.players.map(p => ({ id: p.id, name: p.name, color: p.color, piece: p.piece,
     cash: p.cash, properties: [...p.properties], correct: p.correct, bankrupt: p.bankrupt,
     totalAssets: p.cash + p.properties.length * STATION_PRICE,
     wrongAnswers: p.wrong.map(w => ({ ...w, reveal: { ...w.reveal } })) }))

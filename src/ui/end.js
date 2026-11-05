@@ -1,4 +1,8 @@
+import { renderPiece } from './pieces.js';
+import { sfxEnd } from './audio.js';
 export function renderEnd(root, { game, stations, onReplay, onSetup }) {
+  try { sfxEnd(); } catch {}
+
   const el = document.createElement('div');
   el.className = 'screen end-screen';
   root.replaceChildren(el);
@@ -24,13 +28,23 @@ export function renderEnd(root, { game, stations, onReplay, onSetup }) {
   ranking.forEach((r, i) => {
     const row = document.createElement('div');
     row.className = 'rank-row';
-    row.innerHTML = `
-      <div class="rank-pos">${i + 1}</div>
-      <div>
-        <strong><span class="swatch" style="background:${r.color}"></span> ${escapeHtml(r.name)}</strong>
-        <div class="hint">答對 ${r.correct} 題 · 車站 ${r.properties.length} · ${r.bankrupt ? '破產' : '完賽'}</div>
-      </div>
-      <div><strong>$${r.totalAssets}</strong></div>`;
+    const pos = document.createElement('div');
+    pos.className = 'rank-pos';
+    pos.textContent = String(i + 1);
+    const mid = document.createElement('div');
+    const strong = document.createElement('strong');
+    strong.style.display = 'inline-flex';
+    strong.style.alignItems = 'center';
+    strong.style.gap = '0.4rem';
+    strong.appendChild(renderPiece(r, { size: 34 }));
+    strong.appendChild(document.createTextNode(' ' + r.name));
+    const hint = document.createElement('div');
+    hint.className = 'hint';
+    hint.textContent = `答對 ${r.correct} 題 · 車站 ${r.properties.length} · ${r.bankrupt ? '破產' : '完賽'}`;
+    mid.append(strong, hint);
+    const assets = document.createElement('div');
+    assets.innerHTML = `<strong>$${r.totalAssets}</strong>`;
+    row.append(pos, mid, assets);
     ranks.appendChild(row);
   });
   printArea.appendChild(ranks);

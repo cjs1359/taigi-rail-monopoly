@@ -2,9 +2,12 @@
  * Classic square Monopoly-style board (HTML/CSS, horizontal readable labels).
  * Counter-clockwise from 起點 at bottom-left, matching trip order:
  * left↑ (西下車) → top→ (中南部) → right↓ (東部北上) → bottom← (宜蘭／北回臺北).
+ *
+ * Tokens travel on an OUTER lane beyond each square so names / Tâi-lô stay clear.
  */
 
 import { labelsForSides } from '../engine/board.js';
+import { renderPiece } from './pieces.js';
 
 const TYPE_FILL = {
   start: '#f0d78c',
@@ -14,23 +17,32 @@ const TYPE_FILL = {
   station: '#fffef8',
 };
 
+/** Outer token-lane depth (% of board). Squares sit inside this ring. */
+export const TOKEN_LANE = 6.2;
+/** Square track depth (% of board). */
+export const SQUARE_TRACK = 14.8;
+
 /** @deprecated name kept for callers; returns HTML board. */
 export function renderBoardSvg(board, players, opts = {}) {
   return renderMonoBoard(board, players, opts);
 }
 
-export function renderMonoBoard(board, players, { lastLandedIndex = null, stations = null } = {}) {
+export function renderMonoBoard(board, players, { lastLandedIndex = null, stations = null, animatingId = null } = {}) {
   const n = board.squares.length;
   const ownerByStation = new Map();
   players.forEach(p => p.properties.forEach(id => ownerByStation.set(id, p)));
 
   const layout = layoutPerimeter(n);
+  const inset = TOKEN_LANE + SQUARE_TRACK; // center starts here
+
   const boardEl = document.createElement('div');
   boardEl.className = 'mono-board';
+  boardEl.style.setProperty('--token-lane', `${TOKEN_LANE}%`);
+  boardEl.style.setProperty('--square-track', `${SQUARE_TRACK}%`);
+  boardEl.style.setProperty('--board-inset', `${inset}%`);
   boardEl.setAttribute('role', 'img');
   boardEl.setAttribute('aria-label', '環島方型棋盤');
 
-  // Dynamic side labels from stations actually on each side
   const catalog = stations || [...board.stationById.values()];
   const sideStations = [[], [], [], []];
   board.squares.forEach((sq, i) => {
@@ -52,7 +64,6 @@ export function renderMonoBoard(board, players, { lastLandedIndex = null, statio
   center.className = 'mono-center-slot';
   center.dataset.slot = 'center';
 
-  // Tiny Taiwan outline with direction arrow (decorative)
   const map = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   map.setAttribute('class', 'tw-outline');
   map.setAttribute('viewBox', '0 0 60 90');
@@ -79,6 +90,7 @@ export function renderMonoBoard(board, players, { lastLandedIndex = null, statio
       sq.type !== 'station' ? `type-${sq.type}` : '',
       i === lastLandedIndex ? 'landed' : '',
     ].filter(Boolean).join(' ');
+    cell.dataset.sqIndex = String(i);
     cell.style.left = `${pos.left}%`;
     cell.style.top = `${pos.top}%`;
     cell.style.width = `${pos.width}%`;
@@ -98,6 +110,11 @@ export function renderMonoBoard(board, players, { lastLandedIndex = null, statio
       : sq.type === 'lore' ? '#4A90A4'
       : sq.type === 'rest' ? '#8B6B4A'
       : '#aaa';
+    // Owner badge lives only inside the colour strip — never over name / TL
+    if (owner) {
+      const badge = renderPiece(owner, { size: 14, className: 'owner-badge' });
+      strip.appendChild(badge);
+    }
     cell.appendChild(strip);
 
     const body = document.createElement('div');
@@ -117,25 +134,56 @@ export function renderMonoBoard(board, players, { lastLandedIndex = null, statio
       body.appendChild(tl);
     }
     cell.appendChild(body);
+    boardEl.appendChild(cell);
 
+    // Outer token lane (sibling of square, never inside text body)
     const tokensHere = players.filter(p => !p.bankrupt && p.position === i);
     if (tokensHere.length) {
+      const lane = tokenLaneRect(pos);
       const tokenRow = document.createElement('div');
-      tokenRow.className = 'mono-tokens';
-      tokensHere.forEach(p => {
-        const t = document.createElement('span');
-        t.className = 'mono-token';
-        t.style.background = p.color;
-        t.title = p.name;
-        tokenRow.appendChild(t);
-      });
-      cell.appendChild(tokenRow);
-    }
+      tokenRow.className = `mono-token-lane side-${pos.side}` + (pos.corner ? ' corner' : '');
+      tokenRow.dataset.sqIndex = String(i);
+      tokenRow.style.left = `${lane.left}%`;
+      tokenRow.style.top = `${lane.top}%`;
+      tokenRow.style.width = `${lane.width}%`;
+      tokenRow.style.height = `${lane.height}%`;
 
-    boardEl.appendChild(cell);
+      const count = tokensHere.length;
+      // Fit up to 4 tokens in the lane without covering the square
+      const size = count >= 4 ? 18 : count === 3 ? 20 : count === 2 ? 22 : 24;
+      tokensHere.forEach((p) => {
+        const wrap = renderPiece(p, {
+          size,
+          bounce: Boolean(p._bounce),
+          className: 'mono-token-piece',
+        });
+        wrap.dataset.tokenPlayer = p.id;
+        tokenRow.appendChild(wrap);
+      });
+      boardEl.appendChild(tokenRow);
+    }
   });
 
   return { svg: boardEl, boardEl, positions: layout, centerSlot: center };
+}
+
+/** Outer-edge lane rect for a square (percent of board). */
+export function tokenLaneRect(pos) {
+  const L = TOKEN_LANE;
+  if (pos.side === 0) {
+    // left outer
+    return { left: 0, top: pos.top, width: L, height: pos.height };
+  }
+  if (pos.side === 1) {
+    // top outer
+    return { left: pos.left, top: 0, width: pos.width, height: L };
+  }
+  if (pos.side === 2) {
+    // right outer
+    return { left: 100 - L, top: pos.top, width: L, height: pos.height };
+  }
+  // bottom outer
+  return { left: pos.left, top: 100 - L, width: pos.width, height: L };
 }
 
 function sideLengths(n) {
@@ -146,10 +194,11 @@ function sideLengths(n) {
 
 /**
  * Side 0 left bottom→top, 1 top left→right, 2 right top→bottom, 3 bottom right→left.
- * Movement increases index = counter-clockwise = 臺北出發西下→南→東→北回.
+ * Squares are inset by TOKEN_LANE so the outer ring is free for tokens.
  */
-function layoutPerimeter(n) {
-  const track = 17;
+export function layoutPerimeter(n) {
+  const lane = TOKEN_LANE;
+  const track = SQUARE_TRACK;
   const lens = sideLengths(n);
   while (lens.reduce((a, b) => a + b, 0) > n) {
     const i = lens.indexOf(Math.max(...lens));
@@ -160,13 +209,14 @@ function layoutPerimeter(n) {
     lens[lens.indexOf(Math.min(...lens))]++;
   }
 
+  // Inner edge of token lane = start of square track
   const corners = [
-    { left: 0, top: 100 - track },
-    { left: 0, top: 0 },
-    { left: 100 - track, top: 0 },
-    { left: 100 - track, top: 100 - track },
+    { left: lane, top: 100 - lane - track },           // BL
+    { left: lane, top: lane },                         // TL
+    { left: 100 - lane - track, top: lane },           // TR
+    { left: 100 - lane - track, top: 100 - lane - track }, // BR
   ];
-  const edgeSpan = 100 - 2 * track;
+  const edgeSpan = 100 - 2 * (lane + track);
   const out = [];
 
   for (let side = 0; side < 4; side++) {
@@ -182,21 +232,23 @@ function layoutPerimeter(n) {
     for (let e = 0; e < edgeCount; e++) {
       const seg = edgeSpan / edgeCount;
       if (side === 0) {
-        const top = 100 - track - (e + 1) * seg;
-        out.push({ side, corner: false, left: 0, top, width: track, height: seg });
+        const top = 100 - lane - track - (e + 1) * seg;
+        out.push({ side, corner: false, left: lane, top, width: track, height: seg });
       } else if (side === 1) {
         out.push({
           side, corner: false,
-          left: track + e * seg, top: 0, width: seg, height: track,
+          left: lane + track + e * seg, top: lane, width: seg, height: track,
         });
       } else if (side === 2) {
         out.push({
           side, corner: false,
-          left: 100 - track, top: track + e * seg, width: track, height: seg,
+          left: 100 - lane - track, top: lane + track + e * seg, width: track, height: seg,
         });
       } else {
-        const left = 100 - track - (e + 1) * seg;
-        out.push({ side, corner: false, left, top: 100 - track, width: seg, height: track });
+        const left = 100 - lane - track - (e + 1) * seg;
+        out.push({
+          side, corner: false, left, top: 100 - lane - track, width: seg, height: track,
+        });
       }
     }
   }
