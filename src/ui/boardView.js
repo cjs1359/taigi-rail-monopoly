@@ -18,9 +18,9 @@ const TYPE_FILL = {
 };
 
 /** Outer token-lane depth (% of board). Squares sit inside this ring. */
-export const TOKEN_LANE = 11;
+export const TOKEN_LANE = 9;
 /** Square track depth (% of board). */
-export const SQUARE_TRACK = 12.5;
+export const SQUARE_TRACK = 14;
 
 /** @deprecated name kept for callers; returns HTML board. */
 export function renderBoardSvg(board, players, opts = {}) {
@@ -112,7 +112,7 @@ export function renderMonoBoard(board, players, { lastLandedIndex = null, statio
       : '#aaa';
     // Owner badge lives only inside the colour strip — never over name / TL
     if (owner) {
-      const badge = renderPiece(owner, { size: 22, className: 'owner-badge' });
+      const badge = renderPiece(owner, { size: 20, className: 'owner-badge' });
       strip.appendChild(badge);
     }
     cell.appendChild(strip);
@@ -124,6 +124,9 @@ export function renderMonoBoard(board, players, { lastLandedIndex = null, statio
     const name = document.createElement('div');
     name.className = 'mono-name';
     name.textContent = sq.type === 'branch' && sq.branchName ? sq.branchName : sq.label;
+    const nameLen = [...name.textContent].length;
+    if (nameLen >= 5) name.style.fontSize = 'clamp(9px, 1.55cqw, 12px)';
+    if (nameLen >= 7) name.style.fontSize = 'clamp(8px, 1.35cqw, 11px)';
     body.appendChild(name);
 
     if (sq.type === 'station' && sq.taigiTl) {
@@ -131,6 +134,10 @@ export function renderMonoBoard(board, players, { lastLandedIndex = null, statio
       tl.className = 'mono-tl';
       tl.setAttribute('lang', 'nan-Latn-TW');
       tl.textContent = sq.taigiTl;
+      const tlLen = sq.taigiTl.length;
+      if (tlLen >= 12) tl.style.fontSize = 'clamp(7px, 1.2cqw, 9.5px)';
+      if (tlLen >= 16) tl.style.fontSize = 'clamp(6.5px, 1.05cqw, 8.5px)';
+      if (tlLen >= 20) tl.style.fontSize = 'clamp(6px, 0.95cqw, 8px)';
       body.appendChild(tl);
     }
     cell.appendChild(body);
@@ -168,6 +175,60 @@ export function renderMonoBoard(board, players, { lastLandedIndex = null, statio
   });
 
   return { svg: boardEl, boardEl, positions: layout, centerSlot: center };
+}
+
+
+/**
+ * Shrink name / Tâi-lô fonts just enough so every label fits inside its square
+ * (no scroll overflow, no overflow:hidden clipping). Prefer larger board first;
+ * this is the safety net for long romanizations on crowded rings.
+ */
+export function ensureLabelsFit(boardEl) {
+  if (!boardEl) return;
+  // Force layout so container-query font sizes & flex sizes are final.
+  void boardEl.offsetWidth;
+
+  function glyphOut(el, sr) {
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const rects = [...range.getClientRects()];
+      for (const r of rects) {
+        if (r.width <= 0 && r.height <= 0) continue;
+        if (r.right > sr.right + 1.5 || r.bottom > sr.bottom + 1.5) return true;
+        if (r.left < sr.left - 1.5 || r.top < sr.top - 1.5) return true;
+      }
+      return false;
+    } catch {
+      const er = el.getBoundingClientRect();
+      return er.right > sr.right + 1.5 || er.bottom > sr.bottom + 1.5
+        || er.left < sr.left - 1.5 || er.top < sr.top - 1.5;
+    }
+  }
+
+  boardEl.querySelectorAll('.mono-sq').forEach((sq) => {
+    const body = sq.querySelector('.mono-sq-body');
+    if (!body) return;
+    const labels = [...body.querySelectorAll('.mono-name, .mono-tl')];
+    if (!labels.length) return;
+
+    const fits = () => {
+      void body.offsetWidth;
+      if (body.scrollWidth > body.clientWidth + 1) return false;
+      if (body.scrollHeight > body.clientHeight + 1) return false;
+      const sr = sq.getBoundingClientRect();
+      return labels.every((el) => !glyphOut(el, sr));
+    };
+
+    if (fits()) return;
+    for (let step = 0; step < 16 && !fits(); step++) {
+      labels.forEach((el) => {
+        const cur = parseFloat(getComputedStyle(el).fontSize) || 10;
+        const next = Math.max(5.5, cur * 0.88);
+        el.style.fontSize = `${next.toFixed(2)}px`;
+      });
+    }
+  });
 }
 
 /** Outer-edge lane rect for a square (percent of board). */

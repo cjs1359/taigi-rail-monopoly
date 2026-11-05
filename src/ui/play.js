@@ -1,7 +1,7 @@
 import {
   rollDice, answerBuy, answerRent, ack, forceEnd, STATION_PRICE, BASE_RENT,
 } from '../engine/game.js';
-import { renderBoardSvg } from './boardView.js';
+import { renderBoardSvg, ensureLabelsFit } from './boardView.js';
 import { renderPiece } from './pieces.js';
 import {
   unlockAudio, renderAudioControls,
@@ -18,8 +18,30 @@ function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
+function fitBoard(wrap) {
+  const parent = wrap?.parentElement;
+  if (!parent) return;
+  const cs = getComputedStyle(parent);
+  const padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+  const padY = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+  const availW = Math.max(0, parent.clientWidth - padX);
+  const availH = Math.max(0, parent.clientHeight - padY);
+  // Prefer the limiting dimension so the board fills the panel without empty margin.
+  const s = Math.max(260, Math.floor(Math.min(availW || availH, availH || availW)));
+  if (s > 0 && Number.isFinite(s)) {
+    wrap.style.width = `${s}px`;
+    wrap.style.height = `${s}px`;
+    wrap.style.maxWidth = '100%';
+    wrap.style.maxHeight = '100%';
+  }
+}
+
+
 export function renderPlay(root, { game, stations, onEnd, onExit }) {
   let state = game;
+  /** @type {(() => void) | null} */
+  let fitBoardResize = null;
+
   let lastDice = null;
   let lastLandedIndex = null;
   let animating = false;
@@ -126,6 +148,15 @@ export function renderPlay(root, { game, stations, onEnd, onExit }) {
   }
 
   function paint() {
+    if (!fitBoardResize) {
+      fitBoardResize = () => {
+        const w = el.querySelector('.board-wrap');
+        const b = el.querySelector('.mono-board');
+        if (w) fitBoard(w);
+        if (b) ensureLabelsFit(b);
+      };
+      window.addEventListener('resize', fitBoardResize);
+    }
     el.innerHTML = '';
     const p = current();
     const rem = remainingMs();
@@ -134,7 +165,7 @@ export function renderPlay(root, { game, stations, onEnd, onExit }) {
     banner.className = 'turn-banner';
     const nameDiv = document.createElement('div');
     nameDiv.className = 'turn-name';
-    nameDiv.appendChild(renderPiece(p, { size: 36, bounce: !animating && state.phase === 'await_roll' }));
+    nameDiv.appendChild(renderPiece(p, { size: 28, bounce: !animating && state.phase === 'await_roll' }));
     const nameSpan = document.createElement('span');
     nameSpan.textContent = ` ${p.name} 的回合`;
     nameDiv.appendChild(nameSpan);
@@ -156,7 +187,7 @@ export function renderPlay(root, { game, stations, onEnd, onExit }) {
     el.appendChild(layout);
 
     const boardCard = document.createElement('div');
-    boardCard.className = 'card';
+    boardCard.className = 'card board-card';
     layout.appendChild(boardCard);
 
     const wrap = document.createElement('div');
