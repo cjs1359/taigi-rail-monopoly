@@ -6,6 +6,7 @@ import { renderBoardSvg } from './boardView.js';
 export function renderPlay(root, { game, stations, onEnd, onExit }) {
   let state = game;
   let lastDice = null;
+  let lastLandedIndex = null;
   /** @type {null | { question: any, correct: boolean, message: string, next: any }} */
   let reveal = null;
 
@@ -73,15 +74,46 @@ export function renderPlay(root, { game, stations, onEnd, onExit }) {
 
     const wrap = document.createElement('div');
     wrap.className = 'board-wrap';
-    const { svg } = renderBoardSvg(state.board, state.players);
-    wrap.appendChild(svg);
+    const lastIdx = state.pending?.square
+      ? state.board.squares.findIndex(sq => sq.id === state.pending.square.id)
+      : (typeof lastLandedIndex === 'number' ? lastLandedIndex : null);
+    const { boardEl, centerSlot } = renderBoardSvg(state.board, state.players, {
+      lastLandedIndex: lastIdx,
+    });
+    wrap.appendChild(boardEl);
 
-    const center = document.createElement('div');
-    center.className = 'board-center';
     const dice = document.createElement('div');
     dice.className = 'dice-face';
     dice.textContent = lastDice != null ? String(lastDice) : '🎲';
-    center.appendChild(dice);
+    centerSlot.appendChild(dice);
+
+    const turnLine = document.createElement('div');
+    turnLine.style.fontWeight = '700';
+    turnLine.style.fontSize = '0.95rem';
+    turnLine.innerHTML = `<span class="swatch" style="background:${p.color}"></span> ${escapeHtml(p.name)}`;
+    centerSlot.appendChild(turnLine);
+
+    if (lastIdx != null && lastIdx >= 0) {
+      const sq = state.board.squares[lastIdx];
+      const card = document.createElement('div');
+      card.className = 'landed-card';
+      const st = sq.stationId ? state.board.stationById.get(sq.stationId) : null;
+      const title = sq.type === 'branch' && sq.branchName ? sq.branchName : sq.label;
+      card.innerHTML = `<strong>${escapeHtml(title)}</strong>` +
+        (st?.taigiTl ? `<div class="tl" lang="nan-Latn-TW">${escapeHtml(st.taigiTl)}</div>` : '') +
+        (st?.taigiHanji ? `<div>漢字：${escapeHtml(st.taigiHanji)}</div>` : '') +
+        (sq.line ? `<div class="hint">${escapeHtml(sq.line)}</div>` : '');
+      centerSlot.appendChild(card);
+    }
+
+    const miniLog = document.createElement('div');
+    miniLog.className = 'center-log';
+    state.log.slice(-4).reverse().forEach(line => {
+      const d = document.createElement('div');
+      d.textContent = line;
+      miniLog.appendChild(d);
+    });
+    centerSlot.appendChild(miniLog);
 
     const actions = document.createElement('div');
     actions.className = 'actions';
@@ -91,6 +123,10 @@ export function renderPlay(root, { game, stations, onEnd, onExit }) {
       rollBtn.onclick = () => {
         const next = rollDice(state);
         lastDice = next.pending?.roll ?? lastDice;
+        if (next.pending?.square) {
+          const id = next.pending.square.id;
+          lastLandedIndex = next.board.squares.findIndex(sq => sq.id === id);
+        }
         apply(next);
       };
       actions.appendChild(rollBtn);
@@ -107,8 +143,7 @@ export function renderPlay(root, { game, stations, onEnd, onExit }) {
       if (confirm('確定結束並結算？')) apply(forceEnd(state));
     };
     actions.appendChild(endBtn);
-    center.appendChild(actions);
-    wrap.appendChild(center);
+    centerSlot.appendChild(actions);
     boardCard.appendChild(wrap);
 
     const side = document.createElement('div');

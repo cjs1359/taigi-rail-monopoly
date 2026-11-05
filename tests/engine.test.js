@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { buildBoard, generateBuyQuestion, generateRentQuestion, checkAnswer,
+import { buildBoard, previewBoard, sampleStationsToFit, MAX_BOARD_SQUARES,
+  generateBuyQuestion, generateRentQuestion, checkAnswer,
   buildLoreDeck, drawLoreCard, createGame, rollDice, answerBuy, answerRent, ack,
   forceEnd, STATION_PRICE, BASE_RENT } from '../src/engine/index.js';
 
@@ -50,14 +51,26 @@ describe('board', () => {
     const pingxi = squares.findIndex(s => s.branchName === '平溪支線');
     expect(pingxi).toBeGreaterThan(squares.findIndex(s => s.label === '基隆'));
   });
-  it.each([[5, 0, 0], [6, 1, 0], [12, 2, 1], [24, 3, 2], [32, 4, 2]])(
+  it.each([[5, 0, 0], [6, 1, 0], [12, 2, 1], [24, 3, 2], [32, 3, 2]])(
     'adapts specials for %i stations', (count, lore, rest) => {
       const squares = buildBoard(stations, stations.slice(0, count).map(s => s.id)).squares;
       expect(squares.filter(s => s.type === 'station')).toHaveLength(count);
       expect(squares.filter(s => s.type === 'lore')).toHaveLength(lore);
       expect(squares.filter(s => s.type === 'rest')).toHaveLength(rest);
+      expect(squares.length).toBeLessThanOrEqual(MAX_BOARD_SQUARES);
       expect(new Set(squares.map(s => s.id)).size).toBe(squares.length);
     });
+  it('caps the board and can sample a large selection down to fit', () => {
+    const differs = stations.filter(s => s.differs).map(s => s.id);
+    const preview = previewBoard(stations, differs);
+    expect(preview.overCap).toBe(true);
+    expect(() => buildBoard(stations, differs)).toThrow(/40/);
+    const trimmed = sampleStationsToFit(stations, differs, () => 0.25);
+    const after = previewBoard(stations, trimmed);
+    expect(after.overCap).toBe(false);
+    expect(after.squareCount).toBeLessThanOrEqual(MAX_BOARD_SQUARES);
+    expect(buildBoard(stations, trimmed).squares.length).toBeLessThanOrEqual(MAX_BOARD_SQUARES);
+  });
   it('preserves aliases, deduplicates selections, validates ids and uses fallback threshold', () => {
     const alias = stations.find(s => /[（(]/.test(s.mandarin));
     if (alias) expect(buildBoard(stations, [alias.id, alias.id]).squares[1].label).toBe(alias.mandarin);

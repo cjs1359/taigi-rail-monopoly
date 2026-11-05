@@ -1,115 +1,184 @@
-/** Render monopoly-style ring board as SVG */
+/**
+ * Classic square Monopoly-style board (HTML/CSS, horizontal readable labels).
+ * Counter-clockwise from 起點 at bottom-left:
+ * left↑ (西部) → top→ (南部) → right↓ (東部) → bottom← (北部).
+ */
 
-export function renderBoardSvg(board, players, { width = 640, height = 640 } = {}) {
+const TYPE_FILL = {
+  start: '#f0d78c',
+  branch: '#e8d5f0',
+  lore: '#d5e8f0',
+  rest: '#e8dcc8',
+  station: '#fffef8',
+};
+
+/** @deprecated name kept for callers; returns HTML board. */
+export function renderBoardSvg(board, players, opts = {}) {
+  return renderMonoBoard(board, players, opts);
+}
+
+export function renderMonoBoard(board, players, { lastLandedIndex = null } = {}) {
   const n = board.squares.length;
-  const cx = width / 2;
-  const cy = height / 2;
-  const outer = Math.min(width, height) * 0.46;
-  const inner = outer * 0.72;
-  const svgNS = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(svgNS, 'svg');
-  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-  svg.setAttribute('class', 'board-svg');
-  svg.setAttribute('role', 'img');
-  svg.setAttribute('aria-label', '環島棋盤');
+  const ownerByStation = new Map();
+  players.forEach(p => p.properties.forEach(id => ownerByStation.set(id, p)));
 
-  // soft ring background
-  const ring = document.createElementNS(svgNS, 'circle');
-  ring.setAttribute('cx', cx);
-  ring.setAttribute('cy', cy);
-  ring.setAttribute('r', (outer + inner) / 2);
-  ring.setAttribute('fill', 'none');
-  ring.setAttribute('stroke', '#e8dfc8');
-  ring.setAttribute('stroke-width', outer - inner);
-  svg.appendChild(ring);
+  const layout = layoutPerimeter(n);
+  const boardEl = document.createElement('div');
+  boardEl.className = 'mono-board';
+  boardEl.setAttribute('role', 'img');
+  boardEl.setAttribute('aria-label', '環島方型棋盤');
 
-  const positions = [];
-  for (let i = 0; i < n; i++) {
-    // counter-clockwise from top (-90deg), going left first visually = west
-    const angle = -Math.PI / 2 - (i / n) * Math.PI * 2;
-    const r = (outer + inner) / 2;
-    const x = cx + Math.cos(angle) * r;
-    const y = cy + Math.sin(angle) * r;
-    positions.push({ x, y, angle });
+  for (const [cls, text] of [
+    ['hint-west', '西部'],
+    ['hint-south', '南部'],
+    ['hint-east', '東部'],
+    ['hint-north', '北部'],
+  ]) {
+    const h = document.createElement('div');
+    h.className = `mono-hint ${cls}`;
+    h.textContent = text;
+    boardEl.appendChild(h);
   }
 
+  const center = document.createElement('div');
+  center.className = 'mono-center-slot';
+  center.dataset.slot = 'center';
+  boardEl.appendChild(center);
+
   board.squares.forEach((sq, i) => {
-    const { x, y, angle } = positions[i];
-    const g = document.createElementNS(svgNS, 'g');
-    const w = Math.max(36, Math.min(56, (2 * Math.PI * ((outer + inner) / 2)) / n * 0.85));
-    const h = outer - inner;
-    const rect = document.createElementNS(svgNS, 'rect');
-    rect.setAttribute('x', -w / 2);
-    rect.setAttribute('y', -h / 2);
-    rect.setAttribute('width', w);
-    rect.setAttribute('height', h);
-    rect.setAttribute('rx', 6);
-    const fill = sq.type === 'station' ? (sq.color || '#7A8B6B')
+    const pos = layout[i];
+    const cell = document.createElement('div');
+    cell.className = [
+      'mono-sq',
+      `side-${pos.side}`,
+      pos.corner ? 'corner' : '',
+      sq.type !== 'station' ? `type-${sq.type}` : '',
+      i === lastLandedIndex ? 'landed' : '',
+    ].filter(Boolean).join(' ');
+    cell.style.left = `${pos.left}%`;
+    cell.style.top = `${pos.top}%`;
+    cell.style.width = `${pos.width}%`;
+    cell.style.height = `${pos.height}%`;
+
+    const owner = sq.type === 'station' ? ownerByStation.get(sq.stationId) : null;
+    if (owner) {
+      cell.classList.add('owned');
+      cell.style.setProperty('--owner', owner.color);
+    }
+
+    const strip = document.createElement('div');
+    strip.className = 'mono-strip';
+    strip.style.background = sq.type === 'station' ? (sq.color || '#7A8B6B')
       : sq.type === 'start' ? '#c4a35a'
       : sq.type === 'branch' ? '#9B6B9B'
       : sq.type === 'lore' ? '#4A90A4'
       : sq.type === 'rest' ? '#8B6B4A'
       : '#aaa';
-    rect.setAttribute('fill', fill);
-    rect.setAttribute('stroke', '#fff');
-    rect.setAttribute('stroke-width', '2');
-    rect.setAttribute('opacity', '0.92');
-    g.appendChild(rect);
+    cell.appendChild(strip);
 
-    const label = document.createElementNS(svgNS, 'text');
-    label.setAttribute('text-anchor', 'middle');
-    label.setAttribute('dominant-baseline', 'middle');
-    label.setAttribute('class', 'sq-label');
-    label.setAttribute('fill', '#fff');
-    const displayLabel = sq.type === 'branch' && sq.branchName ? sq.branchName : sq.label;
-    const fontSize = displayLabel.length > 5 ? 8 : displayLabel.length > 3 ? 9 : 10;
-    label.setAttribute('font-size', String(fontSize));
-    const lines = wrapLabel(displayLabel, 5);
-    lines.forEach((line, li) => {
-      const tspan = document.createElementNS(svgNS, 'tspan');
-      tspan.setAttribute('x', 0);
-      tspan.setAttribute('dy', li === 0 ? `${-((lines.length - 1) * 0.55)}em` : '1.1em');
-      tspan.textContent = line;
-      label.appendChild(tspan);
-    });
-    g.appendChild(label);
+    const body = document.createElement('div');
+    body.className = 'mono-sq-body';
+    body.style.background = TYPE_FILL[sq.type] || TYPE_FILL.station;
 
-    const deg = (angle * 180) / Math.PI + 90;
-    g.setAttribute('transform', `translate(${x}, ${y}) rotate(${deg})`);
-    svg.appendChild(g);
+    const name = document.createElement('div');
+    name.className = 'mono-name';
+    name.textContent = sq.type === 'branch' && sq.branchName ? sq.branchName : sq.label;
+    body.appendChild(name);
+
+    if (sq.type === 'station' && sq.taigiTl) {
+      const tl = document.createElement('div');
+      tl.className = 'mono-tl';
+      tl.setAttribute('lang', 'nan-Latn-TW');
+      tl.textContent = sq.taigiTl;
+      body.appendChild(tl);
+    }
+    cell.appendChild(body);
+
+    const tokensHere = players.filter(p => !p.bankrupt && p.position === i);
+    if (tokensHere.length) {
+      const tokenRow = document.createElement('div');
+      tokenRow.className = 'mono-tokens';
+      tokensHere.forEach(p => {
+        const t = document.createElement('span');
+        t.className = 'mono-token';
+        t.style.background = p.color;
+        t.title = p.name;
+        tokenRow.appendChild(t);
+      });
+      cell.appendChild(tokenRow);
+    }
+
+    boardEl.appendChild(cell);
   });
 
-  // player tokens
-  const byPos = new Map();
-  players.forEach((p, idx) => {
-    if (p.bankrupt) return;
-    const list = byPos.get(p.position) || [];
-    list.push({ p, idx });
-    byPos.set(p.position, list);
-  });
-  for (const [pos, list] of byPos) {
-    const { x, y } = positions[pos];
-    list.forEach(({ p }, j) => {
-      const offset = (j - (list.length - 1) / 2) * 12;
-      const tx = x + Math.cos(positions[pos].angle + Math.PI / 2) * offset * 0.15;
-      const ty = y + offset * 0.35;
-      const c = document.createElementNS(svgNS, 'circle');
-      c.setAttribute('cx', tx);
-      c.setAttribute('cy', ty);
-      c.setAttribute('r', 8);
-      c.setAttribute('fill', p.color);
-      c.setAttribute('class', 'token');
-      svg.appendChild(c);
-    });
-  }
-
-  return { svg, positions };
+  return { svg: boardEl, boardEl, positions: layout, centerSlot: center };
 }
 
-function wrapLabel(text, max) {
-  const s = String(text);
-  if (s.length <= max) return [s];
+/** Split n into 4 side lengths (each includes its starting corner). */
+function sideLengths(n) {
+  const base = Math.floor(n / 4);
+  const rem = n % 4;
+  return [0, 1, 2, 3].map(i => Math.max(1, base + (i < rem ? 1 : 0)));
+}
+
+/**
+ * Side 0 left bottom→top, 1 top left→right, 2 right top→bottom, 3 bottom right→left.
+ * Corners: BL, TL, TR, BR — each owned by the side that starts there.
+ */
+function layoutPerimeter(n) {
+  const track = 17; // % depth of perimeter track
+  const lens = sideLengths(n);
+  // Ensure sum === n (sideLengths with max(1) can overshoot for tiny n; clamp for our 6–40 range)
+  while (lens.reduce((a, b) => a + b, 0) > n) {
+    const i = lens.indexOf(Math.max(...lens));
+    if (lens[i] > 1) lens[i]--;
+    else break;
+  }
+  while (lens.reduce((a, b) => a + b, 0) < n) {
+    lens[lens.indexOf(Math.min(...lens))]++;
+  }
+
+  const corners = [
+    { left: 0, top: 100 - track },             // BL
+    { left: 0, top: 0 },                       // TL
+    { left: 100 - track, top: 0 },             // TR
+    { left: 100 - track, top: 100 - track },   // BR
+  ];
+  const edgeSpan = 100 - 2 * track;
   const out = [];
-  for (let i = 0; i < s.length; i += max) out.push(s.slice(i, i + max));
-  return out.slice(0, 3);
+
+  for (let side = 0; side < 4; side++) {
+    const len = lens[side];
+    const edgeCount = Math.max(0, len - 1);
+    out.push({
+      side, corner: true,
+      left: corners[side].left,
+      top: corners[side].top,
+      width: track,
+      height: track,
+    });
+    for (let e = 0; e < edgeCount; e++) {
+      const seg = edgeSpan / edgeCount;
+      if (side === 0) {
+        // left: just above BL, going up → next cells have decreasing top
+        const top = 100 - track - (e + 1) * seg;
+        out.push({ side, corner: false, left: 0, top, width: track, height: seg });
+      } else if (side === 1) {
+        out.push({
+          side, corner: false,
+          left: track + e * seg, top: 0, width: seg, height: track,
+        });
+      } else if (side === 2) {
+        out.push({
+          side, corner: false,
+          left: 100 - track, top: track + e * seg, width: track, height: seg,
+        });
+      } else {
+        // bottom: just left of BR, going left
+        const left = 100 - track - (e + 1) * seg;
+        out.push({ side, corner: false, left, top: 100 - track, width: seg, height: track });
+      }
+    }
+  }
+  return out;
 }

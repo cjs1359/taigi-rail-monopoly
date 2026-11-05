@@ -1,4 +1,7 @@
-import { LINE_COLORS } from '../engine/board.js';
+import {
+  LINE_COLORS, previewBoard, sampleStationsToFit, MAX_BOARD_SQUARES,
+  RECOMMENDED_STATION_MIN, RECOMMENDED_STATION_MAX,
+} from '../engine/board.js';
 import { loadSets, upsertSet, deleteSet } from './storage.js';
 
 const PLAYER_COLORS = ['#c75b39', '#3d7a6a', '#4a90a4', '#c4a35a'];
@@ -43,7 +46,7 @@ export function renderSetup(root, { stations, onStart }) {
         <p class="sub">老師先選車站，再讓 2–4 人輪流共用這台裝置遊玩。</p>
         <p class="notice-phone">建議使用平板或電腦開啟</p>
       </div>
-      <div class="stat-pill">已選 <strong id="sel-count">${state.selected.size}</strong> 站（建議 16–32）</div>
+      <div class="stat-pill">已選 <strong id="sel-count">${state.selected.size}</strong> 站（建議 ${RECOMMENDED_STATION_MIN}–${RECOMMENDED_STATION_MAX}，棋盤上限 ${MAX_BOARD_SQUARES} 格）</div>
     `;
     el.appendChild(hero);
 
@@ -115,9 +118,16 @@ export function renderSetup(root, { stations, onStart }) {
 
     const startBtn = document.createElement('button');
     startBtn.textContent = '開始環島';
+    const preview = previewBoard(stations, [...state.selected]);
+    startBtn.disabled = state.selected.size < 6 || preview.overCap;
     startBtn.onclick = () => {
       if (state.selected.size < 6) {
-        alert('請至少選 6 個車站（建議 16–32）。');
+        alert(`請至少選 6 個車站（建議 ${RECOMMENDED_STATION_MIN}–${RECOMMENDED_STATION_MAX}）。`);
+        return;
+      }
+      const prev = previewBoard(stations, [...state.selected]);
+      if (prev.overCap) {
+        alert(`棋盤會超過 ${MAX_BOARD_SQUARES} 格（目前預估 ${prev.squareCount} 格）。請減少車站，或按「縮減到上限」。`);
         return;
       }
       const players = state.players.slice(0, state.playerCount).map((p, i) => ({
@@ -134,6 +144,29 @@ export function renderSetup(root, { stations, onStart }) {
     };
     playersCard.appendChild(startBtn);
     side.appendChild(playersCard);
+
+    if (preview.overCap || state.selected.size > RECOMMENDED_STATION_MAX) {
+      const warn = document.createElement('div');
+      warn.className = 'cap-warn';
+      if (preview.overCap) {
+        warn.innerHTML = `<strong>超過棋盤上限</strong>：目前選 ${preview.stationCount} 站，預估 <strong>${preview.squareCount}</strong> 格（上限 ${MAX_BOARD_SQUARES}）。方型盤面最多 ${MAX_BOARD_SQUARES} 格，站名才看得清楚。請取消部分車站，或一鍵縮減。`;
+        const trimBtn = document.createElement('button');
+        trimBtn.textContent = '縮減到上限';
+        trimBtn.style.marginTop = '0.5rem';
+        trimBtn.onclick = () => {
+          const before = state.selected.size;
+          const kept = sampleStationsToFit(stations, [...state.selected]);
+          state.selected = new Set(kept);
+          alert(`已從 ${before} 站隨機縮減為 ${kept.length} 站（優先保留台華語不同的站），預估 ${previewBoard(stations, kept).squareCount} 格。`);
+          sync();
+        };
+        warn.appendChild(document.createElement('br'));
+        warn.appendChild(trimBtn);
+      } else {
+        warn.innerHTML = `已選 ${state.selected.size} 站（建議 ${RECOMMENDED_STATION_MIN}–${RECOMMENDED_STATION_MAX}）。預估棋盤 ${preview.squareCount} 格，仍在 ${MAX_BOARD_SQUARES} 格以內，但格數偏多時字會較小。`;
+      }
+      side.insertBefore(warn, side.firstChild);
+    }
 
     // save/load
     const saveCard = document.createElement('div');
@@ -245,7 +278,8 @@ export function renderSetup(root, { stations, onStart }) {
 
     const differsHint = document.createElement('p');
     differsHint.className = 'hint';
-    differsHint.textContent = `標有 ≠ 的站表示台語建議寫法／名稱與華語常用寫法不同（共 ${stations.filter(s => s.differs).length} 站）。`;
+    const prevMain = previewBoard(stations, [...state.selected]);
+    differsHint.textContent = `標有 ≠ 的站表示台語建議寫法／名稱與華語常用寫法不同（共 ${stations.filter(s => s.differs).length} 站）。目前預估棋盤 ${prevMain.squareCount}／${MAX_BOARD_SQUARES} 格。`;
     main.appendChild(differsHint);
 
     const listWrap = document.createElement('div');
@@ -286,12 +320,7 @@ export function renderSetup(root, { stations, onStart }) {
         cb.onchange = () => {
           if (cb.checked) state.selected.add(s.id);
           else state.selected.delete(s.id);
-          const countEl = el.querySelector('#sel-count');
-          if (countEl) countEl.textContent = state.selected.size;
-          // refresh line header counts lightly
-          title.textContent = `${line}（${lineStations.filter(x => state.selected.has(x.id)).length}/${lineStations.length}）`;
-          const nowAll = lineStations.every(x => state.selected.has(x.id));
-          lineBtn.textContent = nowAll ? '取消整線' : '選整線';
+          sync();
         };
         const text = document.createElement('span');
         text.innerHTML = `<span class="name">${escapeHtml(s.mandarin)}</span>
