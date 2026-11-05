@@ -530,6 +530,9 @@ button:disabled { opacity: .45; cursor: not-allowed; }
   justify-content: center;
   line-height: 0;
   flex-shrink: 0;
+  filter:
+    drop-shadow(0 0 1px #fff)
+    drop-shadow(0 1px 1.5px rgba(0,0,0,.2));
 }
 .piece-svg { display: block; overflow: visible; }
 .piece-bounce {
@@ -550,10 +553,10 @@ button:disabled { opacity: .45; cursor: not-allowed; }
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 1px;
+  gap: 2px;
   pointer-events: none;
   box-sizing: border-box;
-  padding: 1px;
+  padding: 2px;
 }
 .mono-token-lane.side-0,
 .mono-token-lane.side-2 {
@@ -563,19 +566,49 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .mono-token-lane.side-3 {
   flex-direction: row;
 }
+.mono-token-lane.grid-2x2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  place-items: center;
+  gap: 1px;
+}
+.mono-token-lane.row-3 {
+  flex-wrap: wrap;
+  align-content: center;
+}
 .mono-token-piece {
   flex: 0 0 auto;
-  filter: drop-shadow(0 1px 1px rgba(0,0,0,.28));
+  line-height: 0;
+  filter:
+    drop-shadow(0 0 1.5px #fff)
+    drop-shadow(0 0 2.5px #fff)
+    drop-shadow(0 1px 2px rgba(0,0,0,.35));
 }
-/* Owner badge sits inside colour strip only */
+.mono-token-piece .piece-svg {
+  display: block;
+}
+.mono-token-piece.piece-wrap,
+.owner-badge.piece-wrap {
+  filter:
+    drop-shadow(0 0 1.5px #fff)
+    drop-shadow(0 0 2.5px #fff)
+    drop-shadow(0 1px 2px rgba(0,0,0,.35));
+}
+/* Owner badge sits inside colour strip only — keep colour readable */
 .owner-badge {
   position: relative;
   z-index: 2;
-  filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff);
   pointer-events: none;
   line-height: 0;
+  background: rgba(255,255,255,.55);
+  border-radius: 50%;
+  padding: 1px;
 }
-.owner-badge .piece-svg { width: 14px; height: 14px; }
+.owner-badge .piece-svg { width: 20px; height: 20px; }
+.mono-strip {
+  min-height: 22px;
+}
 .piece-label { font-size: 0.75rem; white-space: nowrap; }
 
 .audio-controls {

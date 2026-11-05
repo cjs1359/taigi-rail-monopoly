@@ -18,9 +18,9 @@ const TYPE_FILL = {
 };
 
 /** Outer token-lane depth (% of board). Squares sit inside this ring. */
-export const TOKEN_LANE = 6.2;
+export const TOKEN_LANE = 11;
 /** Square track depth (% of board). */
-export const SQUARE_TRACK = 14.8;
+export const SQUARE_TRACK = 12.5;
 
 /** @deprecated name kept for callers; returns HTML board. */
 export function renderBoardSvg(board, players, opts = {}) {
@@ -112,7 +112,7 @@ export function renderMonoBoard(board, players, { lastLandedIndex = null, statio
       : '#aaa';
     // Owner badge lives only inside the colour strip — never over name / TL
     if (owner) {
-      const badge = renderPiece(owner, { size: 14, className: 'owner-badge' });
+      const badge = renderPiece(owner, { size: 22, className: 'owner-badge' });
       strip.appendChild(badge);
     }
     cell.appendChild(strip);
@@ -149,8 +149,10 @@ export function renderMonoBoard(board, players, { lastLandedIndex = null, statio
       tokenRow.style.height = `${lane.height}%`;
 
       const count = tokensHere.length;
-      // Fit up to 4 tokens in the lane without covering the square
-      const size = count >= 4 ? 18 : count === 3 ? 20 : count === 2 ? 22 : 24;
+      // Large, readable tokens (≈28–36px). 4-up uses a 2×2 grid in the lane.
+      const size = count >= 4 ? 30 : count === 3 ? 32 : count === 2 ? 34 : 38;
+      if (count >= 4) tokenRow.classList.add('grid-2x2');
+      else if (count === 3) tokenRow.classList.add('row-3');
       tokensHere.forEach((p) => {
         const wrap = renderPiece(p, {
           size,
@@ -158,6 +160,7 @@ export function renderMonoBoard(board, players, { lastLandedIndex = null, statio
           className: 'mono-token-piece',
         });
         wrap.dataset.tokenPlayer = p.id;
+        wrap.dataset.teamColor = p.color;
         tokenRow.appendChild(wrap);
       });
       boardEl.appendChild(tokenRow);
