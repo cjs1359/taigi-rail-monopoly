@@ -359,10 +359,15 @@ def compose_midgame(page):
           // ≥3 owned stations from different teams
           const stationSq = squares.filter(el => el.querySelector('.mono-tl'));
           const owned = [];
-          for (let i = 0; i < 3; i++) {
-            const el = stationSq[i * 2 + 1] || stationSq[i];
+          const sideOf = el => Number([...el.classList].find(c => c.startsWith('side-')).slice(5));
+          const picksOwned = [];
+          for (let s = 0; s < 4; s++) { const c = stationSq.filter(el => sideOf(el) === s); if (c.length) picksOwned.push(c[Math.floor(c.length/2)]); }
+          const leftSq = stationSq.filter(el => sideOf(el) === 0);
+          if (leftSq[1]) picksOwned.push(leftSq[1]);
+          for (let i = 0; i < picksOwned.length; i++) {
+            const el = picksOwned[i];
             if (!el) continue;
-            const team = teams[i];
+            const team = teams[i % 4];
             el.classList.add('owned');
             el.style.setProperty('--owner', team.color);
             const strip = el.querySelector('.mono-strip');
@@ -383,8 +388,16 @@ def compose_midgame(page):
           const tokenH = [...board.querySelectorAll('.mono-token-lane .piece-svg')]
             .map(s => s.getBoundingClientRect().height);
 
+          const ov = (a, b) => !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+          const texts = [...board.querySelectorAll('.mono-name, .mono-tl')].map(e => e.getBoundingClientRect());
+          const badgeHits = [];
+          board.querySelectorAll('.owner-badge').forEach((b, bi) => {
+            const bb = b.getBoundingClientRect();
+            texts.forEach((t, ti) => { if (ov(bb, t)) badgeHits.push({ bi, ti }); });
+          });
           return {
-            ok: new Set(tokenColors).size === 4 && new Set(badgeColors).size >= 3 && tokenH.every(h => h >= 30),
+            badgeHits, leftOwned: picksOwned.filter(el => sideOf(el) === 0).length,
+            ok: badgeHits.length === 0 && new Set(tokenColors).size === 4 && new Set(badgeColors).size >= 3 && tokenH.every(h => h >= 30),
             tokenColors, badgeColors, tokenH, owned,
           };
         }""",
