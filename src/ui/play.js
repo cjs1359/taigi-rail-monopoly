@@ -79,6 +79,7 @@ export function renderPlay(root, { game, stations, onEnd, onExit }) {
       : (typeof lastLandedIndex === 'number' ? lastLandedIndex : null);
     const { boardEl, centerSlot } = renderBoardSvg(state.board, state.players, {
       lastLandedIndex: lastIdx,
+      stations,
     });
     wrap.appendChild(boardEl);
 

@@ -1,8 +1,10 @@
 /**
  * Classic square Monopoly-style board (HTML/CSS, horizontal readable labels).
- * Counter-clockwise from 起點 at bottom-left:
- * left↑ (西部) → top→ (南部) → right↓ (東部) → bottom← (北部).
+ * Counter-clockwise from 起點 at bottom-left, matching trip order:
+ * left↑ (西下車) → top→ (中南部) → right↓ (東部北上) → bottom← (宜蘭／北回臺北).
  */
+
+import { labelsForSides } from '../engine/board.js';
 
 const TYPE_FILL = {
   start: '#f0d78c',
@@ -17,7 +19,7 @@ export function renderBoardSvg(board, players, opts = {}) {
   return renderMonoBoard(board, players, opts);
 }
 
-export function renderMonoBoard(board, players, { lastLandedIndex = null } = {}) {
+export function renderMonoBoard(board, players, { lastLandedIndex = null, stations = null } = {}) {
   const n = board.squares.length;
   const ownerByStation = new Map();
   players.forEach(p => p.properties.forEach(id => ownerByStation.set(id, p)));
@@ -28,21 +30,43 @@ export function renderMonoBoard(board, players, { lastLandedIndex = null } = {})
   boardEl.setAttribute('role', 'img');
   boardEl.setAttribute('aria-label', '環島方型棋盤');
 
-  for (const [cls, text] of [
-    ['hint-west', '西部'],
-    ['hint-south', '南部'],
-    ['hint-east', '東部'],
-    ['hint-north', '北部'],
-  ]) {
+  // Dynamic side labels from stations actually on each side
+  const catalog = stations || [...board.stationById.values()];
+  const sideStations = [[], [], [], []];
+  board.squares.forEach((sq, i) => {
+    if (sq.type !== 'station') return;
+    const st = board.stationById.get(sq.stationId);
+    if (st) sideStations[layout[i].side].push(st);
+  });
+  const sideLabels = labelsForSides(sideStations, catalog);
+  const hintClass = ['hint-west', 'hint-south', 'hint-east', 'hint-north'];
+  sideLabels.forEach((text, side) => {
+    if (!text) return;
     const h = document.createElement('div');
-    h.className = `mono-hint ${cls}`;
+    h.className = `mono-hint ${hintClass[side]}`;
     h.textContent = text;
     boardEl.appendChild(h);
-  }
+  });
 
   const center = document.createElement('div');
   center.className = 'mono-center-slot';
   center.dataset.slot = 'center';
+
+  // Tiny Taiwan outline with direction arrow (decorative)
+  const map = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  map.setAttribute('class', 'tw-outline');
+  map.setAttribute('viewBox', '0 0 60 90');
+  map.setAttribute('aria-hidden', 'true');
+  map.innerHTML = `
+    <path d="M28 4 C34 6 40 12 42 20 C44 28 46 36 45 44 C44 54 42 62 38 70
+      C34 78 30 84 26 86 C20 84 16 76 14 66 C12 56 10 46 12 36 C14 24 18 12 22 6 Z"
+      fill="#dce8e2" stroke="#3d7a6a" stroke-width="1.5"/>
+    <path d="M30 22 L26 38 L30 34 L34 48" fill="none" stroke="#c75b39" stroke-width="2.2"
+      stroke-linecap="round" stroke-linejoin="round"/>
+    <polygon points="34,48 30,42 38,44" fill="#c75b39"/>
+    <text x="30" y="16" text-anchor="middle" font-size="7" fill="#3d7a6a">環島</text>
+  `;
+  center.appendChild(map);
   boardEl.appendChild(center);
 
   board.squares.forEach((sq, i) => {
@@ -114,7 +138,6 @@ export function renderMonoBoard(board, players, { lastLandedIndex = null } = {})
   return { svg: boardEl, boardEl, positions: layout, centerSlot: center };
 }
 
-/** Split n into 4 side lengths (each includes its starting corner). */
 function sideLengths(n) {
   const base = Math.floor(n / 4);
   const rem = n % 4;
@@ -123,12 +146,11 @@ function sideLengths(n) {
 
 /**
  * Side 0 left bottom→top, 1 top left→right, 2 right top→bottom, 3 bottom right→left.
- * Corners: BL, TL, TR, BR — each owned by the side that starts there.
+ * Movement increases index = counter-clockwise = 臺北出發西下→南→東→北回.
  */
 function layoutPerimeter(n) {
-  const track = 17; // % depth of perimeter track
+  const track = 17;
   const lens = sideLengths(n);
-  // Ensure sum === n (sideLengths with max(1) can overshoot for tiny n; clamp for our 6–40 range)
   while (lens.reduce((a, b) => a + b, 0) > n) {
     const i = lens.indexOf(Math.max(...lens));
     if (lens[i] > 1) lens[i]--;
@@ -139,10 +161,10 @@ function layoutPerimeter(n) {
   }
 
   const corners = [
-    { left: 0, top: 100 - track },             // BL
-    { left: 0, top: 0 },                       // TL
-    { left: 100 - track, top: 0 },             // TR
-    { left: 100 - track, top: 100 - track },   // BR
+    { left: 0, top: 100 - track },
+    { left: 0, top: 0 },
+    { left: 100 - track, top: 0 },
+    { left: 100 - track, top: 100 - track },
   ];
   const edgeSpan = 100 - 2 * track;
   const out = [];
@@ -160,7 +182,6 @@ function layoutPerimeter(n) {
     for (let e = 0; e < edgeCount; e++) {
       const seg = edgeSpan / edgeCount;
       if (side === 0) {
-        // left: just above BL, going up → next cells have decreasing top
         const top = 100 - track - (e + 1) * seg;
         out.push({ side, corner: false, left: 0, top, width: track, height: seg });
       } else if (side === 1) {
@@ -174,7 +195,6 @@ function layoutPerimeter(n) {
           left: 100 - track, top: track + e * seg, width: track, height: seg,
         });
       } else {
-        // bottom: just left of BR, going left
         const left = 100 - track - (e + 1) * seg;
         out.push({ side, corner: false, left, top: 100 - track, width: seg, height: track });
       }

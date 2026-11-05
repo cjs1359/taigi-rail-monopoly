@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { buildBoard, previewBoard, sampleStationsToFit, MAX_BOARD_SQUARES,
+  canonicalStationOrder, canonicalTripIndex,
   generateBuyQuestion, generateRentQuestion, checkAnswer,
   buildLoreDeck, drawLoreCard, createGame, rollDice, answerBuy, answerRent, ack,
   forceEnd, STATION_PRICE, BASE_RENT } from '../src/engine/index.js';
@@ -49,7 +50,11 @@ describe('board', () => {
       expect(squares[index + 1].line).toBe(line);
     }
     const pingxi = squares.findIndex(s => s.branchName === '平溪支線');
-    expect(pingxi).toBeGreaterThan(squares.findIndex(s => s.label === '基隆'));
+    const keelung = squares.findIndex(s => s.label === '基隆');
+    const hsinchu = squares.findIndex(s => s.label === '新竹');
+    // 平溪在宜蘭線末端／八堵一帶，應在西部新竹之後、基隆回程附近（不大於基隆之後很遠）
+    expect(pingxi).toBeGreaterThan(hsinchu);
+    expect(pingxi).toBeLessThan(keelung);
   });
   it.each([[5, 0, 0], [6, 1, 0], [12, 2, 1], [24, 3, 2], [32, 3, 2]])(
     'adapts specials for %i stations', (count, lore, rest) => {
@@ -75,9 +80,41 @@ describe('board', () => {
     const alias = stations.find(s => /[（(]/.test(s.mandarin));
     if (alias) expect(buildBoard(stations, [alias.id, alias.id]).squares[1].label).toBe(alias.mandarin);
     expect(() => buildBoard(stations, ['missing'])).toThrow();
-    const catalog = [{ id: 'north', line: '縱貫線(北段)', lineOrder: 13, mandarin: '北' },
-      { id: 'south', line: '縱貫線(北段)', lineOrder: 14, mandarin: '南' }];
-    expect(buildBoard(catalog, ['north', 'south']).squares.slice(1).map(s => s.id)).toEqual(['south', 'north']);
+    const catalog = [
+      { id: 'tp', line: '縱貫線(北段)', lineOrder: 14, mandarin: '臺北' },
+      { id: 'north', line: '縱貫線(北段)', lineOrder: 13, mandarin: '北' },
+      { id: 'south', line: '縱貫線(北段)', lineOrder: 15, mandarin: '南' },
+    ];
+    // 南下：臺北→南；回程：北
+    expect(buildBoard(catalog, ['north', 'south', 'tp']).squares.filter(s => s.type === 'station').map(s => s.id))
+      .toEqual(['tp', 'south', 'north']);
+  });
+
+  it('keeps 臺北 → 高雄 → 花蓮 → 宜蘭 in cyclic trip order', () => {
+    const names = ['臺北', '高雄', '花蓮', '宜蘭'];
+    const board = buildBoard(stations, names.map(n => byName(n).id));
+    const labels = board.squares.filter(s => s.type === 'station').map(s => s.label);
+    expect(labels).toEqual(names);
+    const canon = canonicalStationOrder(stations);
+    const idx = names.map(n => canon.findIndex(s => s.mandarin === n));
+    expect(idx.every((v, i, a) => i === 0 || v > a[i - 1])).toBe(true);
+  });
+
+  it('board station order follows the canonical sequence for random selections', () => {
+    const trip = canonicalTripIndex(stations);
+    for (let seed = 1; seed <= 8; seed++) {
+      let x = seed * 17;
+      const rng = () => { x = (x * 1103515245 + 12345) & 0x7fffffff; return (x % 1000) / 1000; };
+      const shuffled = [...stations].sort(() => rng() - 0.5);
+      const pick = shuffled.slice(0, 12 + (seed % 10)).map(s => s.id);
+      const labels = buildBoard(stations, pick).squares
+        .filter(s => s.type === 'station')
+        .map(s => s.stationId);
+      const trips = labels.map(id => trip.get(id));
+      for (let i = 1; i < trips.length; i++) {
+        expect(trips[i]).toBeGreaterThan(trips[i - 1]);
+      }
+    }
   });
 });
 

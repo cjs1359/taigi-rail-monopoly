@@ -515,3 +515,15 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 @media (max-width: 640px) {
   .notice-phone { display: block; }
 }
+
+.tw-outline {
+  position: absolute;
+  width: min(28%, 90px);
+  height: auto;
+  opacity: 0.85;
+  top: 4%;
+  right: 4%;
+  pointer-events: none;
+  z-index: 0;
+}
+.mono-center-slot > :not(.tw-outline) { position: relative; z-index: 1; }
